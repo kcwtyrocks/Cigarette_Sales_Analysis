@@ -1,0 +1,115 @@
+# Cigarette Sales Analysis
+
+## Data importation
+```{r}
+s1_dim <- read.csv("s1_product_dimensions.csv")
+s1_trans <- read.csv("s1_transaction_data.csv")
+library(tidyverse)
+library(lubridate)
+```
+
+### Data cleansing and Preparation
+```{r}
+summary(s1_dim)
+summary(s1_trans)
+s1_joined_df <- left_join(s1_trans, s1_dim, by = "product_ean")
+
+s1_joined_df <- s1_joined_df %>%
+  mutate(sales_date_id = ymd(sales_date_id)) %>%
+  mutate(is_multipack = as.factor(is_multipack))
+class(s1_joined_df$is_multipack)
+
+summary(s1_joined_df)
+class(s1_joined_df$sales_pieces)
+#product_ean is clean
+length(unique(s1_joined_df$product_ean))
+
+#non-integer values of sales_pieces are likely to be noisy data
+unique(s1_joined_df$sales_pieces)
+#function to filter the noisy sales_pieces row
+fix_pieces <- function(data){
+  data <- data %>% filter(
+    data$sales_pieces %% 1 == 0
+  )
+  return(data)
+}
+a <- fix_pieces(s1_joined_df)
+
+
+#product_ean is clean
+summary(s1_joined_df$product_ean)
+unique(s1_joined_df$product_ean)
+
+#store_id is clean
+summary(s1_joined_df$store_id)
+length(unique(s1_joined_df$store_id))
+
+#is_multipack is clean
+summary(s1_joined_df$is_multipack)
+unique(s1_joined_df$is_multipack)
+
+
+#There is likely to be a spacebar in product names
+summary(s1_joined_df$product_name)
+unique(s1_joined_df$product_name)
+#Removing trailing spaces
+s1_joined_df <- s1_joined_df %>%
+  mutate(product_name = trimws(product_name))
+
+
+
+final_df <- s1_joined_df %>%
+  group_by(sales_date_id, product_ean, is_multipack, product_name) %>%
+  tally() %>%
+  mutate(day = weekdays(sales_date_id, abbreviate = TRUE)) %>%
+  mutate(Type = 
+           if_else(is_multipack==1, "Multi", "Single"))
+```
+
+### Visualisation & Automation
+```{r}
+
+#Inial Visualisation
+ggplot(final_df, aes(x=sales_date_id, y = n)) +
+  geom_point(aes(color = product_name)) + 
+  geom_line(aes(group = product_ean,
+                color = is_multipack))
+
+
+#Improvements for clearer visualisation
+ggplot(final_df, aes(x=sales_date_id, y = n)) +
+  geom_point(aes(color = Type))+
+    geom_line(aes(color = Type)) +
+  facet_wrap(~product_name, nrow=2, scales = "free") +
+  theme(legend.position = "bottom") +
+  scale_x_date(date_breaks = "3 days")+
+  labs(title="Time Series Analysis of Cigarette Sales in Dec 2019",
+       x="Date", y="Sales Volume") 
+
+
+#Funcionalising the above process
+CleanData <- function(dim_data, trans_data){
+  joined_df <- left_join(trans_data, dim_data, by = "product_ean")
+  joined_df2 <- joined_df %>%
+    mutate(sales_date_id = ymd(sales_date_id))
+  joined_df3 <- fix_pieces(joined_df2) %>%
+    mutate(product_name = trimws(product_name))
+  final <- joined_df3 %>%
+    group_by(sales_date_id, product_ean, is_multipack, product_name) %>%
+    tally() %>%
+    mutate(day = weekdays(sales_date_id, abbreviate = TRUE)) %>%
+    mutate(Type = 
+           if_else(is_multipack==1, "Multi", "Single"))
+  ggplot(final, aes(x=sales_date_id, y = n)) +
+    geom_point(aes(color = Type))+
+    geom_line(aes(color = Type)) +
+    facet_wrap(~product_name, nrow=2, scales = "free") +
+    theme(legend.position = "bottom") +
+    scale_x_date(date_breaks = "3 days")+
+    labs(title="Time Series Analysis of Cigarette Sales in Dec 2019",
+       x="Date", y="Sales Volume")
+}
+
+CleanData(s1_dim, s1_trans)
+
+```
